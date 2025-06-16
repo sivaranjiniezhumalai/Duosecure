@@ -1,0 +1,195 @@
+#define BLYNK_TEMPLATE_ID "TMPL3BcWvSx39"
+#define BLYNK_TEMPLATE_NAME "Control Solenoid Lock"
+#define BLYNK_AUTH_TOKEN "S36pHfMP1NTIdEf9YcJjFq7WdGSbFsfo"
+
+
+// Required Libraries
+#include <WiFi.h>
+#include <BlynkSimpleEsp32.h>
+#include <Keypad.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+
+// WiFi Credentials
+char ssid[] = "Fawzia";      
+char pass[] = "Safreen123"; 
+
+// LCD Setup (I2C address 0x27, 16x2 display)
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+// Keypad Setup (4x4)
+const byte ROWS = 4; 
+const byte COLS = 4; 
+char keys[ROWS][COLS] = {
+  {'1', '2', '3', 'A'},
+  {'4', '5', '6', 'B'},
+  {'7', '8', '9', 'C'},
+  {'*', '0', '#', 'D'}
+};
+
+// ESP32 GPIO Pins for Keypad
+byte rowPins[ROWS] = {32, 33, 25, 26};
+byte colPins[COLS] = {27, 14, 12, 13};
+
+Keypad keypad = Keypad(makeKeymap(keys), rowPins, colPins, ROWS, COLS);
+
+// Variables
+String inputCode = "";               
+const String correctCode = "1234";  
+bool isAccessGranted = false;       
+const int SCROLL_SPEED_MS = 200;
+
+// --- NEW FUNCTION: Scroll Text ---
+void scrollText(String message, int row, int scrollSpeed) {
+  int messageLen = message.length();
+  String paddedMessage = "";
+  for (int i = 0; i < 16; i++) {
+    paddedMessage += " ";
+  }
+  paddedMessage += message;
+  for (int i = 0; i < 16; i++) {
+    paddedMessage += " ";
+  }
+  
+  for (int i = 0; i <= paddedMessage.length() - 16; i++) {
+    lcd.setCursor(0, row);
+    lcd.print(paddedMessage.substring(i, i + 16));
+    delay(scrollSpeed);
+  }
+}
+
+// --- UPDATED FUNCTION: Animation for Keypad Access ---
+void animateKeypadAccess() {
+  lcd.clear();
+  scrollText("Welcome to", 0, SCROLL_SPEED_MS);
+  scrollText("Sweet Home", 1, SCROLL_SPEED_MS);
+  delay(1000);
+
+  lcd.clear();
+  scrollText("Access Granted!", 0, SCROLL_SPEED_MS);
+  scrollText("Boss!", 1, SCROLL_SPEED_MS);
+  delay(2000);
+
+  lcd.clear();
+  lcd.print("Enter Passcode");
+}
+
+// --- UPDATED FUNCTION: Animation for Blynk Access ---
+void animateBlynkAccess() {
+  lcd.clear();
+  scrollText("Remote Access", 0, SCROLL_SPEED_MS);
+  scrollText("Granted!", 1, SCROLL_SPEED_MS);
+  delay(1000);
+
+  lcd.clear();
+  scrollText("Welcome Home", 0, SCROLL_SPEED_MS);
+  scrollText("Stay Safe :)", 1, SCROLL_SPEED_MS);
+  delay(2000);
+
+  lcd.clear();
+  lcd.print("Enter Passcode");
+}
+
+// --- Function: Validate Passcode ---
+void validatePasscode() {
+  if (inputCode == correctCode) {
+    Serial.println("Access Granted via keypad");
+    animateKeypadAccess();
+    isAccessGranted = true;
+    // Add code here to unlock a door (e.g., control a relay or servo)
+  } else {
+    lcd.clear();
+    lcd.print("Access Denied!");
+    Serial.println("Access Denied via keypad");
+    delay(2000);
+    lcd.clear();
+    lcd.print("Enter Passcode");
+    isAccessGranted = false;
+  }
+  inputCode = "";
+}
+
+// --- Blynk Button Callback (V1) ---
+BLYNK_WRITE(V1) {
+  int value = param.asInt();
+  if (value == 1) {
+    Serial.println("Access granted via Blynk!");
+    animateBlynkAccess();
+    isAccessGranted = true;
+    // Add code here to unlock a door (e.g., control a relay or servo)
+    // Optional: Turn the Blynk button back off automatically
+    // Blynk.virtualWrite(V1, 0);
+  } else {
+    Serial.println("Blynk access button turned OFF.");
+    // Optional: Handle button OFF state if needed
+    // isAccessGranted = false;
+  }
+}
+
+// --- Setup Function ---
+void setup() {
+  // Initialize Serial Monitor
+  Serial.begin(115200);
+  Serial.println("\nStarting Access Control System...");
+
+  // Initialize LCD
+  Wire.begin();
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+  lcd.print("System Booting..");
+  Serial.println("LCD Initialized.");
+
+  // Connect to WiFi and Blynk
+  Serial.print("Connecting to WiFi: ");
+  Serial.println(ssid);
+  Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
+
+  // Wait for connection
+  while (Blynk.connect() == false) {
+    Serial.print(".");
+    delay(500);
+  }
+
+  Serial.println("\nWiFi Connected.");
+  Serial.println("Blynk Connected.");
+  Serial.println("System Ready.");
+
+  lcd.clear();
+  lcd.print("Enter Passcode");
+}
+
+// --- Loop Function ---
+void loop() {
+  Blynk.run();
+
+  // Keypad Handling
+  char key = keypad.getKey();
+  
+  if (key) {
+    Serial.print("Key pressed: ");
+    Serial.println(key);
+
+    if (key == '#') {
+      Serial.print("Code entered: ");
+      Serial.println(inputCode);
+      validatePasscode();
+    } else if (key == '*') {
+      inputCode = "";
+      lcd.clear();
+      lcd.print("Enter Passcode");
+      Serial.println("Input cleared.");
+    } else if (inputCode.length() < 10) {
+      inputCode += key;
+      lcd.setCursor(0, 1);
+      String hiddenCode = "";
+      for (int i = 0; i < inputCode.length(); i++) {
+        hiddenCode += '*';
+      }
+      lcd.print(hiddenCode);
+      for (int i = hiddenCode.length(); i < 16; i++) {
+        lcd.print(" ");
+      }
+    }
+  }
+}
